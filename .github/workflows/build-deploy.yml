@@ -31,10 +31,10 @@ jobs:
         run: |
           gcloud auth configure-docker ${{ vars.REGION }}-docker.pkg.dev
 
-      - name: Extract Metadata (Tags)
-        id: meta
+      - name: Extract Metadata (Server)
+        id: meta-server
         run: |
-          BASE_IMAGE="${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/${{ vars.REPO_NAME }}/${{ vars.IMAGE_NAME }}"
+          BASE_IMAGE="${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/${{ vars.REPO_NAME }}/petpulse-server"
           TAGS=""
 
           if [[ "${{ github.ref_name }}" == "main" ]]; then
@@ -47,9 +47,34 @@ jobs:
 
           echo "TAGS=$TAGS" >> $GITHUB_OUTPUT
 
-      - name: Build and Push
+      - name: Extract Metadata (Worker)
+        id: meta-worker
+        run: |
+          BASE_IMAGE="${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/${{ vars.REPO_NAME }}/petpulse-worker"
+          TAGS=""
+
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            TAGS="${BASE_IMAGE}:production,${BASE_IMAGE}:latest"
+          elif [[ "${{ github.ref_name }}" == "preview" ]]; then
+            TAGS="${BASE_IMAGE}:preview,${BASE_IMAGE}:preview-latest"
+          else
+            TAGS="${BASE_IMAGE}:dev-${{ github.sha }}"
+          fi
+
+          echo "TAGS=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Build and Push Server
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: Dockerfile.server
           push: true
-          tags: ${{ steps.meta.outputs.TAGS }}
+          tags: ${{ steps.meta-server.outputs.TAGS }}
+
+      - name: Build and Push Worker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.worker
+          push: true
+          tags: ${{ steps.meta-worker.outputs.TAGS }}
