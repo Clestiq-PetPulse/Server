@@ -1,7 +1,6 @@
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set, QueryFilter, ColumnTrait};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
 use redis::AsyncCommands;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
 use crate::entities::{pet_video, PetVideo};
 use crate::gemini::GeminiClient;
 use chrono::Utc;
@@ -10,7 +9,6 @@ use serde_json::Value;
 use google_cloud_storage::client::Client as GcsClient;
 use google_cloud_storage::http::objects::download::Range;
 use google_cloud_storage::http::objects::get::GetObjectRequest;
-use tokio::io::AsyncWriteExt;
 
 pub async fn start_workers(redis_client: redis::Client, db: DatabaseConnection, concurrency: usize, gcs_client: GcsClient) {
     let db = Arc::new(db);
@@ -139,11 +137,32 @@ async fn process_video(
     match gemini.analyze_video(&temp_file_path).await {
         Ok(analysis_result) => {
             tracing::info!("Analysis successful for {}", video_id);
-            // Update Status PROCESSED (User changed requirement from COMPLETED)
+            tracing::info!("Raw Analysis Result: {:?}", analysis_result);
+
+            // Update Status PROCESSED
             let mut active: pet_video::ActiveModel = video.clone().into();
             active.status = Set("PROCESSED".to_string());
-            active.analysis_result = Set(Some(analysis_result.clone()));
-            let _ = active.update(db).await;
+
+            // Save Analysis directly to PetVideo
+                if let Some(activities_value) = analysis_result.get("activities") {
+                if let Ok(_activities) = serde_json::from_value::<Vec<pet_video::Activity>>(activities_value.clone()) {
+                     active.activities = Set(Some(activities_value.clone()));
+                } else {
+                    tracing::error!("Failed to parse activities matching schema: {:?}", activities_value);
+                }
+            } else {
+                 tracing::warn!("'activities' key missing in analysis result");
+            }
+            active.mood = Set(analysis_result["summary_mood"].as_str().map(|s| s.to_string()));
+            active.description = Set(analysis_result["summary_description"].as_str().map(|s| s.to_string()));
+            active.is_unusual = Set(analysis_result["is_unusual"].as_bool().unwrap_or(false));
+            
+            tracing::info!("Updating video {} with: mood={:?}, unusual={:?}", video_id, active.mood, active.is_unusual);
+
+            match active.update(db).await {
+                Ok(v) => tracing::info!("Updated video successfully: {:?}", v),
+                Err(e) => tracing::error!("Failed to update video {}: {}", video_id, e),
+            }
             
             // Cleanup
             let _ = tokio::fs::remove_file(&temp_file_path).await;

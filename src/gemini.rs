@@ -65,7 +65,7 @@ impl GeminiClient {
         }
 
         let json: Value = res.json().await.map_err(|e| e.to_string())?;
-        let uri = json["file"]["uri"].as_str().ok_or("No URI in response")?.to_string();
+        let _uri = json["file"]["uri"].as_str().ok_or("No URI in response")?.to_string();
         let name = json["file"]["name"].as_str().ok_or("No Name in response")?.to_string();
         
         // We actually need the 'name' (files/...) to check status, and 'uri' to use in generation.
@@ -109,15 +109,25 @@ impl GeminiClient {
             self.model, self.api_key
         );
 
-        let prompt = "Analyze this video of a pet. precise behavior analysis, activity level, and mood. Return a JSON object (without markdown code blocks) with the following structure: \n\
+        let prompt = "Analyze this video of a pet. precise behavior analysis. \n\
+        Return a JSON object (without markdown code blocks) with the following structure: \n\
         { \n\
-            'summary': 'brief summary string', \n\
-            'activities': ['activity1', 'activity2'], \n\
-            'mood': 'mood string', \n\
+            'activities': [ \n\
+                { \n\
+                    'activity': 'string (Activity name e.g., Walking, Sleeping)', \n\
+                    'mood': 'string (Mood e.g., Energetic, Relaxed)', \n\
+                    'description': 'string (Detailed description of this specific segment)', \n\
+                    'starttime': 'string (HH:MM:SS)', \n\
+                    'endtime': 'string (HH:MM:SS)', \n\
+                    'duration': 'string (e.g. 5s)' \n\
+                } \n\
+            ], \n\
             'is_unusual': boolean, \n\
-            'unusual_details': 'details if is_unusual is true, else null' \n\
+            'summary_mood': 'string (Overall mood)', \n\
+            'summary_description': 'string (Overall description)' \n\
         } \n\
         Identify if there is any unusual or concerning behavior (e.g., limping, aggression, extreme lethargy) and set 'is_unusual' to true.";
+
 
         let body = json!({
             "contents": [{
@@ -126,9 +136,6 @@ impl GeminiClient {
                     { "file_data": { 
                         "mime_type": "video/mp4", 
                         "file_uri": self.get_uri_from_name(file_name).await? // Wait, we need the URI, not the name?
-                        // Actually, the GetFile response contains the URI. 
-                        // I should have cached it or fetched it again.
-                        // Let's fetch it again in get_uri...
                     }}
                 ]
             }]
@@ -146,7 +153,22 @@ impl GeminiClient {
         }
 
         let json: Value = res.json().await.map_err(|e| e.to_string())?;
-        Ok(json)
+        
+        // Extract text from: candidates[0].content.parts[0].text
+        let text = json["candidates"][0]["content"]["parts"][0]["text"]
+            .as_str()
+            .ok_or("No text in Gemini response")?;
+            
+        // Clean markdown code blocks if any
+        let clean_text = text.trim()
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```");
+            
+        let parsed: Value = serde_json::from_str(clean_text)
+            .map_err(|e| format!("Failed to parse Gemini JSON: {} - Text: {}", e, clean_text))?;
+
+        Ok(parsed)
     }
     
     // Helper to get URI because upload returns it but I returned name for checking status.

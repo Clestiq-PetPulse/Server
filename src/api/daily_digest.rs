@@ -1,9 +1,9 @@
 use axum::{
-    extract::{Multipart, Path, Extension, State},
+    extract::{Multipart, Path, Extension},
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use sea_orm::{ActiveModelTrait, DatabaseConnection, Set, EntityTrait, QueryFilter, ColumnTrait, Condition};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, Set, EntityTrait, QueryFilter, ColumnTrait};
 use serde_json::json;
 use uuid::Uuid;
 use chrono::Utc;
@@ -142,33 +142,36 @@ pub async fn generate_daily_digest(
         let mut mood_counts = std::collections::HashMap::new();
 
         for clip in clips {
-             if let Some(result) = clip.analysis_result {
-                 let digest = result; // format assumed from Gemini prompt
-                 
-                 // Append Summary
-                 if let Some(s) = digest["summary"].as_str() {
-                     summaries.push_str(&format!("- {}\n", s));
+             // Description as Summary
+             if let Some(s) = &clip.description {
+                 summaries.push_str(&format!("- {}\n", s));
+             }
+             
+             // Activities
+             if let Some(activities_val) = &clip.activities {
+                 if let Some(acts) = activities_val.as_array() { // It's a list of objects now
+                      for a in acts {
+                          // The new schema for Activity: { activity, mood, description, ... }
+                          // We probably just want the activity name for the list
+                          if let Some(act_name) = a["activity"].as_str() {
+                              activities_list.push(act_name.to_string());
+                          }
+                      }
                  }
-                 
-                 // Activities
-                 if let Some(acts) = digest["activities"].as_array() {
-                     for a in acts {
-                         if let Some(act_str) = a.as_str() {
-                             activities_list.push(act_str.to_string());
-                         }
-                     }
-                 }
-                 
-                 // Mood
-                 if let Some(m) = digest["mood"].as_str() {
-                     *mood_counts.entry(m.to_string()).or_insert(0) += 1;
-                 }
-                 
-                 // Unusual
-                 if digest["is_unusual"].as_bool().unwrap_or(false) {
-                     let details = digest["unusual_details"].as_str().unwrap_or("Unspecified unusual behavior");
-                     unusual_events.push(format!("Clip {} ({}): {}", clip.id, clip.created_at, details));
-                 }
+             }
+             
+             // Mood
+             if let Some(m) = &clip.mood {
+                 *mood_counts.entry(m.to_string()).or_insert(0) += 1;
+             }
+             
+             // Unusual
+             if clip.is_unusual {
+                 // We don't have separate 'unusual_details' field, relying on description or just flagging it.
+                 // Maybe we can check if any activity is unusual if we stored it?
+                 // For now, just log the clip description
+                 let details = clip.description.clone().unwrap_or_else(|| "Unspecified".to_string());
+                 unusual_events.push(format!("Clip {} ({}): {}", clip.id, clip.created_at, details));
              }
         }
         
