@@ -97,5 +97,59 @@ fn app(
         .layer(Extension(gcs_client))
         .layer(tower_cookies::CookieManagerLayer::new())
         .layer(prometheus_layer)
+        .layer(
+            tower_http::trace::TraceLayer::new_for_http()
+                .make_span_with(|request: &axum::http::Request<axum::body::Body>| {
+                    let matched_path = request
+                        .extensions()
+                        .get::<axum::extract::MatchedPath>()
+                        .map(|matched| matched.as_str());
+                    
+                    // Simple IP extraction (check common headers or fallback to socket)
+                    // In a real prod env behind LB, trust specific headers.
+                    let user_ip = request
+                        .headers()
+                        .get("x-forwarded-for")
+                        .and_then(|v| v.to_str().ok())
+                        .or_else(|| {
+                            request
+                                .headers()
+                                .get("x-real-ip")
+                                .and_then(|v| v.to_str().ok())
+                        })
+                        .unwrap_or("unknown");
+
+                    tracing::info_span!(
+                        "http_request",
+                        user_ip = user_ip,
+                        method = ?request.method(),
+                        uri = ?request.uri(),
+                        // status and latency recorded later
+                        status = tracing::field::Empty,
+                        latency = tracing::field::Empty,
+                    )
+                })
+                .on_request(|_request: &axum::http::Request<axum::body::Body>, _span: &tracing::Span| {
+                    // Disable default "started processing request" log to reduce noise
+                })
+                .on_response(|response: &axum::http::Response<_>, latency: std::time::Duration, span: &tracing::Span| {
+                    // We can't easily access request details here unless stored in span or extensions.
+                    // The span already captures method/uri from make_span_with.
+                    // However, to make them appear "first" or top-level in the JSON event (not nested in span),
+                    // we would need to pass them down or rely on the formatter flattening.
+                    // Since we enabled flatten_event(true), span fields might still be separated.
+                    // Let's rely on the Span fields for context, but ensure the message is clear.
+                    
+                    // To strictly satisfy "Request body starts with API endpoint", we'll rely on the field order
+                    // in the macro, though JSON key order is not guaranteed.
+                    
+                    span.record("status", tracing::field::display(response.status()));
+                    span.record("latency", tracing::field::debug(latency));
+                    
+                    tracing::info!(
+                        "request completed"
+                    );
+                })
+        )
         .route("/metrics", get(|| async move { metric_handle.render() }))
 }

@@ -35,7 +35,16 @@ pub async fn create_pet(
     };
 
     match new_pet.insert(&db).await {
-        Ok(pet) => (StatusCode::CREATED, Json(pet)).into_response(),
+        Ok(pet) => {
+            tracing::info!(
+                table = "pets",
+                action = "create",
+                pet_id = pet.id,
+                user_id = pet.user_id,
+                "New pet created"
+            );
+            (StatusCode::CREATED, Json(pet)).into_response()
+        },
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": e.to_string()})),

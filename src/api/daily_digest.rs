@@ -94,7 +94,7 @@ pub async fn upload_video(
             let pet_video = pet_video::ActiveModel {
                 id: Set(file_uuid),
                 pet_id: Set(pet_id),
-                file_path: Set(gcs_path),
+                file_path: Set(gcs_path.clone()),
                 status: Set("PENDING".to_string()),
                 retry_count: Set(0),
                 created_at: Set(now),
@@ -108,6 +108,15 @@ pub async fn upload_video(
                     format!("DB Error: {}", e),
                 )
             })?;
+
+            tracing::info!(
+                table = "pet_videos",
+                action = "upload",
+                video_id = ?file_uuid,
+                pet_id = pet_id,
+                file_path = ?gcs_path,
+                "Video uploaded to GCS and recorded in DB"
+            );
 
             // 3. Push to Redis
             let mut conn = redis_client

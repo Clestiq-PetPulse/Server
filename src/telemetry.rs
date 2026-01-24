@@ -9,8 +9,9 @@ pub fn init_telemetry(service_name: &str) {
     let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
 
     // EnvFilter
+    // Suppress DB debug logs (sqlx, sea_orm) by setting them to warn. Default to info.
     let env_filter = tracing_subscriber::EnvFilter::new(
-        std::env::var("RUST_LOG").unwrap_or_else(|_| "debug".into()),
+        std::env::var("RUST_LOG").unwrap_or_else(|_| "info,petpulse_server=info,sqlx=warn,sea_orm=warn".into()),
     );
 
     // Registry
@@ -45,7 +46,12 @@ pub fn init_telemetry(service_name: &str) {
 
     // Fmt Layer (JSON or Text)
     if log_format == "json" {
-        let fmt_layer = tracing_subscriber::fmt::layer().json();
+        // flatten_event(true) moves fields to top level.
+        // without_time() removes timestamp.
+        let fmt_layer = tracing_subscriber::fmt::layer()
+            .json()
+            .flatten_event(true)
+            .without_time();
         registry.with(otel_layer).with(fmt_layer).init();
     } else {
         let fmt_layer = tracing_subscriber::fmt::layer();

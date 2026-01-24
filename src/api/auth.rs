@@ -48,16 +48,49 @@ pub async fn register(
     };
 
     match new_user.insert(&db).await {
-        Ok(user) => (
-            StatusCode::CREATED,
-            Json(json!({"id": user.id, "email": user.email, "name": user.name})),
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
-        )
-            .into_response(),
+        Ok(user) => {
+            tracing::info!(
+                table = "users",
+                action = "register_user",
+                user_id = user.id,
+                email = user.email,
+                "User registered successfully"
+            );
+            (
+                StatusCode::CREATED,
+                Json(json!({"id": user.id, "email": user.email, "name": user.name})),
+            )
+                .into_response()
+        },
+        Err(e) => {
+            // Check for duplicate key error (Postgres code 23505)
+            let error_msg = e.to_string();
+            if error_msg.contains("duplicate key value violates unique constraint") {
+                 tracing::warn!(
+                    table = "users",
+                    action = "register_user_failed",
+                    reason = "duplicate_email",
+                    error = ?e,
+                    "Registration failed: duplicate email"
+                );
+                return (
+                    StatusCode::CONFLICT,
+                    Json(json!({"error": "Email already exists"})),
+                ).into_response();
+            }
+
+            tracing::error!(
+                table = "users",
+                action = "register_user_error",
+                error = ?e,
+                "Registration failed: database error"
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+                .into_response()
+        },
     }
 }
 
@@ -73,7 +106,7 @@ pub async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> Response {
     let user = match user::Entity::find()
-        .filter(user::Column::Email.eq(payload.email))
+        .filter(user::Column::Email.eq(payload.email.clone()))
         .one(&db)
         .await
     {
@@ -115,8 +148,23 @@ pub async fn login(
         cookie.set_http_only(true);
         cookies.add(cookie);
 
+        tracing::info!(
+            table = "users",
+            action = "login_user",
+            user_id = user.id,
+            email = user.email,
+            "User logged in successfully"
+        );
+
         (StatusCode::OK, Json(json!({"message": "Login successful"}))).into_response()
     } else {
+        tracing::warn!(
+            table = "users",
+            action = "login_user_failed",
+            reason = "invalid_credentials",
+            email = payload.email,
+            "Login failed: invalid password"
+        );
         (
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Invalid email or password"})),

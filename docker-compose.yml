@@ -27,7 +27,7 @@ services:
     environment:
       DATABASE_URL: postgres://user:password@db:5432/petpulse
       REDIS_URL: redis://redis:6379
-      RUST_LOG: debug
+      RUST_LOG: "info,petpulse_server=debug,sqlx=warn,sea_orm=warn,tower_http=debug"
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GCS_BUCKET_NAME: ${GCS_BUCKET_NAME}
       GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
@@ -54,7 +54,7 @@ services:
     environment:
       DATABASE_URL: postgres://user:password@db:5432/petpulse
       REDIS_URL: redis://redis:6379
-      RUST_LOG: debug
+      RUST_LOG: "info,petpulse_server=debug,sqlx=warn,sea_orm=warn"
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GCS_BUCKET_NAME: ${GCS_BUCKET_NAME}
       GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
