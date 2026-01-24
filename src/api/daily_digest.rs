@@ -269,8 +269,9 @@ pub async fn generate_daily_digest(
         // Create JSON payloads
         let moods: Vec<String> = mood_counts.keys().cloned().collect();
         let moods_json = serde_json::to_value(moods).unwrap_or(serde_json::json!([]));
-        let activities_json = serde_json::to_value(activities_list.clone()).unwrap_or(serde_json::json!([]));
-        
+        let activities_json =
+            serde_json::to_value(activities_list.clone()).unwrap_or(serde_json::json!([]));
+
         // Convert unusual_events strings back to detailed objects if possible, or just list
         // Since we only collected strings in previous loop, let's fix the loop to collect objects
         // We will do it properly by maintaining 'unusual_events_list'
@@ -284,8 +285,8 @@ pub async fn generate_daily_digest(
                 }));
             }
         }
-        let unusual_events_json = serde_json::to_value(unusual_events_objects).unwrap_or(serde_json::json!([]));
-
+        let unusual_events_json =
+            serde_json::to_value(unusual_events_objects).unwrap_or(serde_json::json!([]));
 
         if let Some(digest) = existing {
             let mut active: daily_digest::ActiveModel = digest.into();

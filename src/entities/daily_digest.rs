@@ -11,7 +11,7 @@ pub struct Model {
     pub date: Date,
     #[sea_orm(column_type = "Text")]
     pub summary: String,
-    
+
     // New Fields
     #[sea_orm(column_type = "JsonBinary", nullable)]
     pub moods: Option<serde_json::Value>,
@@ -20,7 +20,7 @@ pub struct Model {
     #[sea_orm(column_type = "JsonBinary", nullable)]
     pub unusual_events: Option<serde_json::Value>,
     pub total_videos: i32,
-    
+
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

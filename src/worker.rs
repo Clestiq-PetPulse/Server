@@ -5,9 +5,7 @@ use google_cloud_storage::client::Client as GcsClient;
 use google_cloud_storage::http::objects::download::Range;
 use google_cloud_storage::http::objects::get::GetObjectRequest;
 use redis::AsyncCommands;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -190,7 +188,7 @@ async fn process_video(
             match active.update(db).await {
                 Ok(v) => {
                     tracing::info!("Updated video successfully: {:?}", v);
-                    
+
                     // Queue digest update
                     let date = v.created_at.date_naive();
                     let digest_payload = serde_json::json!({
@@ -198,13 +196,17 @@ async fn process_video(
                         "date": date.format("%Y-%m-%d").to_string()
                     })
                     .to_string();
-                    
+
                     let _: () = redis_conn
                         .rpush("digest_queue", digest_payload)
                         .await
                         .unwrap_or(());
-                    
-                    tracing::info!("Queued digest update for pet_id={}, date={}", v.pet_id, date);
+
+                    tracing::info!(
+                        "Queued digest update for pet_id={}, date={}",
+                        v.pet_id,
+                        date
+                    );
                 }
                 Err(e) => tracing::error!("Failed to update video {}: {}", video_id, e),
             }
@@ -323,11 +325,7 @@ async fn process_digest_update(
     {
         Ok(v) => v,
         Err(e) => {
-            tracing::error!(
-                "Digest Worker {}: Failed to query videos: {}",
-                worker_id,
-                e
-            );
+            tracing::error!("Digest Worker {}: Failed to query videos: {}", worker_id, e);
             return;
         }
     };
@@ -421,7 +419,8 @@ async fn process_digest_update(
     );
 
     let moods_json = serde_json::to_value(all_moods).unwrap_or(serde_json::json!([]));
-    let activities_json = serde_json::to_value(all_activities_json).unwrap_or(serde_json::json!([]));
+    let activities_json =
+        serde_json::to_value(all_activities_json).unwrap_or(serde_json::json!([]));
     let unusual_json = serde_json::to_value(unusual_events_list).unwrap_or(serde_json::json!([]));
 
     // 4. UPSERT daily_digest

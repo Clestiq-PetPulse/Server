@@ -10,16 +10,8 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(DailyDigest::Table)
-                    .add_column(
-                        ColumnDef::new(DailyDigest::Moods)
-                            .json_binary()
-                            .null(),
-                    )
-                    .add_column(
-                        ColumnDef::new(DailyDigest::Activities)
-                            .json_binary()
-                            .null(),
-                    )
+                    .add_column(ColumnDef::new(DailyDigest::Moods).json_binary().null())
+                    .add_column(ColumnDef::new(DailyDigest::Activities).json_binary().null())
                     .add_column(
                         ColumnDef::new(DailyDigest::UnusualEvents)
                             .json_binary()
