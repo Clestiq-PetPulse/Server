@@ -11,6 +11,7 @@ use axum::{
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde_json::json;
 use tower_cookies::{Cookie, Cookies};
+use tracing::field::display;
 
 #[derive(serde::Deserialize)]
 pub struct RegisterRequest {
@@ -49,13 +50,16 @@ pub async fn register(
 
     match new_user.insert(&db).await {
         Ok(user) => {
-            tracing::info!(
-                table = "users",
-                action = "register_user",
-                user_id = user.id,
-                email = user.email,
-                "User registered successfully"
-            );
+            tracing::Span::current()
+                .record("table", "users")
+                .record("action", "register_user")
+                .record("user_id", user.id)
+                .record("user_email", &user.email)
+                .record("business_event", "User registered successfully")
+                .record("error", tracing::field::Empty);
+            
+            metrics::counter!("petpulse_users_registered_total").increment(1);
+
             (
                 StatusCode::CREATED,
                 Json(json!({"id": user.id, "email": user.email, "name": user.name})),
@@ -66,25 +70,22 @@ pub async fn register(
             // Check for duplicate key error (Postgres code 23505)
             let error_msg = e.to_string();
             if error_msg.contains("duplicate key value violates unique constraint") {
-                 tracing::warn!(
-                    table = "users",
-                    action = "register_user_failed",
-                    reason = "duplicate_email",
-                    error = ?e,
-                    "Registration failed: duplicate email"
-                );
+                 tracing::Span::current()
+                    .record("table", "users")
+                    .record("action", "register_user_failed")
+                    .record("error", "duplicate_email");
+
                 return (
                     StatusCode::CONFLICT,
                     Json(json!({"error": "Email already exists"})),
                 ).into_response();
             }
 
-            tracing::error!(
-                table = "users",
-                action = "register_user_error",
-                error = ?e,
-                "Registration failed: database error"
-            );
+            tracing::Span::current()
+                .record("table", "users")
+                .record("action", "register_user_error")
+                .record("error", display(&e));
+
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": e.to_string()})),
@@ -148,23 +149,21 @@ pub async fn login(
         cookie.set_http_only(true);
         cookies.add(cookie);
 
-        tracing::info!(
-            table = "users",
-            action = "login_user",
-            user_id = user.id,
-            email = user.email,
-            "User logged in successfully"
-        );
+        tracing::Span::current()
+            .record("table", "users")
+            .record("action", "login_user")
+            .record("user_id", user.id)
+            .record("user_email", &user.email)
+            .record("business_event", "User logged in successfully")
+            .record("error", tracing::field::Empty);
 
         (StatusCode::OK, Json(json!({"message": "Login successful"}))).into_response()
     } else {
-        tracing::warn!(
-            table = "users",
-            action = "login_user_failed",
-            reason = "invalid_credentials",
-            email = payload.email,
-            "Login failed: invalid password"
-        );
+        tracing::Span::current()
+            .record("table", "users")
+            .record("action", "login_user_failed")
+            .record("error", "invalid_credentials");
+
         (
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Invalid email or password"})),

@@ -109,14 +109,14 @@ pub async fn upload_video(
                 )
             })?;
 
-            tracing::info!(
-                table = "pet_videos",
-                action = "upload",
-                video_id = ?file_uuid,
-                pet_id = pet_id,
-                file_path = ?gcs_path,
-                "Video uploaded to GCS and recorded in DB"
-            );
+            tracing::Span::current()
+                .record("table", "pet_videos")
+                .record("action", "upload")
+                .record("video_id", file_uuid.to_string())
+                .record("pet_id", pet_id)
+                .record("business_event", "Video uploaded to GCS and recorded in DB");
+
+            metrics::counter!("petpulse_videos_uploaded_total", "pet_id" => pet_id.to_string()).increment(1);
 
             // 3. Push to Redis
             let mut conn = redis_client
@@ -128,13 +128,30 @@ pub async fn upload_video(
                         format!("Redis Conn Error: {}", e),
                     )
                 })?;
-            let payload = serde_json::json!({ "video_id": file_uuid }).to_string();
+
+            // Propagate Trace Context
+            use opentelemetry::propagation::TextMapPropagator;
+            use opentelemetry_sdk::propagation::TraceContextPropagator;
+            use tracing_opentelemetry::OpenTelemetrySpanExt;
+            
+            let mut carrier = std::collections::HashMap::new();
+            let propagator = TraceContextPropagator::new();
+            let context = tracing::Span::current().context();
+            propagator.inject_context(&context, &mut carrier);
+
+            let payload = serde_json::json!({ 
+                "video_id": file_uuid,
+                "trace_context": carrier 
+            }).to_string();
+
             let _: () = conn.rpush("video_queue", payload).await.map_err(|e| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     format!("Redis Push Error: {}", e),
                 )
             })?;
+
+            tracing::info!("Enqueued video {} to video_queue", file_uuid);
 
             return Ok(Json(json!({
                 "status": "queued",

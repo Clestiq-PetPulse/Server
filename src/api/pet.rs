@@ -37,12 +37,11 @@ pub async fn create_pet(
     match new_pet.insert(&db).await {
         Ok(pet) => {
             tracing::info!(
-                table = "pets",
-                action = "create",
                 pet_id = pet.id,
                 user_id = pet.user_id,
                 "New pet created"
             );
+            metrics::counter!("petpulse_pets_created_total").increment(1);
             (StatusCode::CREATED, Json(pet)).into_response()
         },
         Err(e) => (

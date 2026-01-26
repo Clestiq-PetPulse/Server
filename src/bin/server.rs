@@ -104,9 +104,15 @@ fn app(
                         .extensions()
                         .get::<axum::extract::MatchedPath>()
                         .map(|matched| matched.as_str());
+
+                    // Dynamic Span Name: "METHOD /path" (e.g., "POST /register")
+                    let span_name = if let Some(path) = matched_path {
+                        format!("{} {}", request.method(), path)
+                    } else {
+                        format!("{} {}", request.method(), request.uri().path())
+                    };
                     
-                    // Simple IP extraction (check common headers or fallback to socket)
-                    // In a real prod env behind LB, trust specific headers.
+                    // Simple IP extraction
                     let user_ip = request
                         .headers()
                         .get("x-forwarded-for")
@@ -119,11 +125,21 @@ fn app(
                         })
                         .unwrap_or("unknown");
 
+                    // Create span with explicit fields for business logic to "fill in" later
                     tracing::info_span!(
-                        "http_request",
+                        "request",
+                        "otel.name" = span_name, // Override OpenTelemetry Span Name
                         user_ip = user_ip,
                         method = ?request.method(),
                         uri = ?request.uri(),
+                        // Fields to be populated by handlers
+                        table = tracing::field::Empty,
+                        action = tracing::field::Empty,
+                        user_id = tracing::field::Empty,
+                        user_email = tracing::field::Empty, // Add email field
+                        pet_id = tracing::field::Empty,
+                        business_event = tracing::field::Empty,
+                        error = tracing::field::Empty,
                         // status and latency recorded later
                         status = tracing::field::Empty,
                         latency = tracing::field::Empty,
