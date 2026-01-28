@@ -1,5 +1,6 @@
 use crate::entities::{daily_digest, pet_video, DailyDigest, PetVideo};
 use crate::gemini::GeminiClient;
+use crate::agent::comfort_loop::{AlertPayload, AlertType};
 use tracing::Instrument;
 use chrono::{NaiveDate, Utc};
 use google_cloud_storage::client::Client as GcsClient;
@@ -271,6 +272,15 @@ async fn process_video(
                     
                     if active.is_unusual.clone().unwrap() {
                          metrics::counter!("petpulse_unusual_events_total", "pet_id" => active.pet_id.clone().unwrap().to_string()).increment(1);
+                         
+                         // Send alert webhook to agent service
+                         let pet_id = active.pet_id.clone().unwrap();
+                         let description = active.description.clone().unwrap().unwrap_or_else(|| "Unusual activity detected".to_string());
+                         let mood = active.mood.clone().unwrap();
+                         
+                         tokio::spawn(async move {
+                             send_alert_webhook(video_id, pet_id, description, mood).await;
+                         });
                     }
 
                     match active.update(db).await {
@@ -595,6 +605,64 @@ async fn process_digest_update_impl(
                 worker_id,
                 e
             );
+        }
+    }
+}
+
+// ============================================================================
+// Alert Webhook Helper
+// ============================================================================
+
+async fn send_alert_webhook(
+    video_id: Uuid,
+    pet_id: i32,
+    description: String,
+    mood: Option<String>,
+) {
+    let agent_url = std::env::var("AGENT_SERVICE_URL")
+        .unwrap_or_else(|_| "http://agent:3002/alert".to_string());
+    
+    let alert_payload = AlertPayload {
+        alert_id: Uuid::new_v4().to_string(),
+        pet_id: pet_id.to_string(),
+        alert_type: AlertType::UnusualBehavior,
+        severity: "high".to_string(),
+        message: Some(description.clone()),
+        metric_value: None,
+        baseline_value: None,
+        deviation_factor: None,
+        video_id: Some(video_id.to_string()),
+        timestamp: Some(Utc::now().to_rfc3339()),
+        context: Some(serde_json::json!({
+            "mood": mood,
+            "description": description,
+        })),
+        title: Some("Unusual Behavior Detected".to_string()),
+        state: Some("alerting".to_string()),
+        eval_matches: None,
+    };
+    
+    tracing::info!(
+        "Sending alert webhook for video_id={}, pet_id={}, alert_type=unusual_behavior",
+        video_id,
+        pet_id
+    );
+    
+    let client = reqwest::Client::new();
+    match client.post(&agent_url).json(&alert_payload).send().await {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                tracing::info!("Successfully sent alert webhook to agent service");
+            } else {
+                tracing::error!(
+                    "Agent service returned error: {} - {}",
+                    resp.status(),
+                    resp.text().await.unwrap_or_else(|_| "<unable to read response>".to_string())
+                );
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to send alert webhook to agent service: {}", e);
         }
     }
 }

@@ -35,8 +35,10 @@ datasources:
     url: db:5432
     database: petpulse
     user: user
+    isDefault: true
     secureJsonData:
-      password: password
+      password: "password"
     jsonData:
+      database: "petpulse"
       sslmode: "disable"
       postgresVersion: 1600

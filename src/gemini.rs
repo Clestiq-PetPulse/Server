@@ -166,7 +166,12 @@ impl GeminiClient {
             \"summary_mood\": \"string (Overall mood)\", \n\
             \"summary_description\": \"string (Overall description)\" \n\
         } \n\
-        Identify if there is any unusual or concerning behavior (e.g., limping, aggression, extreme lethargy) and set \"is_unusual\" to true.";
+        Identify if there is any unusual or concerning behavior and set \"is_unusual\" to true. \n\
+        You MUST classify the unusual activity as exactly one of these three categories if applicable: 'Pacing', 'Barking', or 'Whining'. \n\
+        - If the pet is walking in circles or back and forth repeatedly, label it 'Pacing'. \n\
+        - If the pet is making loud vocal sounds, label it 'Barking'. \n\
+        - If the pet is making high-pitched sad sounds, label it 'Whining'. \n\
+        - If the behavior is unusual but doesn't fit these, provide a descriptive activity name, but prioritize the standard categories.";
 
         let body = json!({
             "contents": [{

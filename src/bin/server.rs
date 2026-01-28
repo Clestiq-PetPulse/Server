@@ -65,7 +65,8 @@ fn app(
 ) -> Router {
     let auth_routes = Router::new()
         .route("/register", post(api::auth::register))
-        .route("/login", post(api::auth::login));
+        .route("/login", post(api::auth::login))
+        .route("/webhook/alert", post(api::webhook::handle_alert));
 
     let protected_routes = Router::new()
         .route(
@@ -171,4 +172,5 @@ fn app(
                 })
         )
         .route("/metrics", get(|| async move { metric_handle.render() }))
+        .layer(axum::extract::DefaultBodyLimit::max(100 * 1024 * 1024))
 }
