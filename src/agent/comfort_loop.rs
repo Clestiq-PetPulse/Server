@@ -335,7 +335,7 @@ impl ComfortLoop {
         let alert_link = format!(
             "{}/alerts/{}",
             std::env::var("FRONTEND_URL").unwrap_or_else(|_| "https://www.petpulse.clestiq.com".to_string()),
-            payload.alert_id
+            alert_uuid
         );
 
         // Send Notifications
@@ -352,6 +352,7 @@ impl ComfortLoop {
                 critical_indicators.as_deref().unwrap_or(&[]),
                 recommended_actions.as_deref().unwrap_or(&[]),
                 &alert_link,
+                &alert_uuid.to_string(),
             )
             .await;
 
@@ -606,6 +607,7 @@ impl ComfortLoop {
                         &final_indicators,
                         &final_actions,
                         &alert_link,
+                        &alert_uuid.to_string(),
                     )
                     .await;
             }
