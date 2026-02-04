@@ -8,9 +8,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::entities::{
-    alerts, emergency_contact, pet, prelude::*, quick_action, EmergencyContact, QuickAction,
-};
+use crate::entities::{emergency_contact, prelude::*, quick_action, EmergencyContact, QuickAction};
 
 #[derive(Deserialize)]
 pub struct CreateQuickActionRequest {

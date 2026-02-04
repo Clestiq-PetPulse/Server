@@ -76,7 +76,6 @@ impl ToString for AlertType {
 }
 
 use crate::notifications::TwilioNotifier;
-use sea_orm::ActiveValue::NotSet;
 
 // Intervention Logic
 pub struct ComfortLoop {
@@ -207,11 +206,12 @@ impl ComfortLoop {
 
         // 4. Decide Intervention (escalating based on count)
         let intervention = self
-            .decide_intervention(&payload, current_alert_count, &final_severity)
+            .decide_intervention(&payload, current_alert_count, &final_severity, alert_uuid)
             .await;
 
         // 4. Execute Action
-        self.execute_action(&intervention, &payload).await;
+        self.execute_action(&intervention, &payload, alert_uuid)
+            .await;
 
         // 5. Update DB with Action
         let update_model = alerts::ActiveModel {
@@ -238,16 +238,34 @@ impl ComfortLoop {
             .await;
 
             // Also generate Quick Actions for Critical
-            self.generate_quick_actions(alert_uuid, db_pet_id, "critical")
-                .await;
+            self.generate_quick_actions(
+                alert_uuid,
+                db_pet_id,
+                "critical",
+                &payload.alert_type.to_string(),
+                payload
+                    .message
+                    .as_deref()
+                    .unwrap_or("Critical health indicator detected"),
+            )
+            .await;
 
             return; // Skip normal monitoring/resolution loop for critical alerts
         }
 
         // Handle High Severity (Persistent) - Generate Quick Actions
         if final_severity == "high" {
-            self.generate_quick_actions(alert_uuid, db_pet_id, "high")
-                .await;
+            self.generate_quick_actions(
+                alert_uuid,
+                db_pet_id,
+                "high",
+                &payload.alert_type.to_string(),
+                payload
+                    .message
+                    .as_deref()
+                    .unwrap_or("Unusual behavior detected"),
+            )
+            .await;
         }
 
         // 6. Continuous Monitoring - wait and check for resolution
@@ -321,13 +339,12 @@ impl ComfortLoop {
 
         let owner_phone = std::env::var("OWNER_PHONE").unwrap_or("+15550000000".to_string());
 
-        let video_link = if let Some(vid) = &payload.video_id {
-            // In a real scenario, generate a signed URL here.
-            // For now, use a direct link placeholder
-            format!("https://petpulse.dashboard/videos/{}", vid)
-        } else {
-            "https://petpulse.dashboard".to_string()
-        };
+        let alert_link = format!(
+            "{}/alerts/{}",
+            std::env::var("FRONTEND_URL")
+                .unwrap_or_else(|_| "https://www.petpulse.clestiq.com".to_string()),
+            alert_uuid
+        );
 
         // Send Notifications
         self.notifier
@@ -342,7 +359,8 @@ impl ComfortLoop {
                     .unwrap_or("Critical health indicator detected"),
                 critical_indicators.as_deref().unwrap_or(&[]),
                 recommended_actions.as_deref().unwrap_or(&[]),
-                &video_link,
+                &alert_link,
+                &alert_uuid.to_string(),
             )
             .await;
 
@@ -367,6 +385,7 @@ impl ComfortLoop {
         payload: &AlertPayload,
         alert_count: u64,
         severity_level: &str,
+        alert_uuid: Uuid,
     ) -> Intervention {
         // If critical, immediately escalate to Notification (handled in main loop branching, but good for safety)
         if severity_level == "critical" {
@@ -397,17 +416,18 @@ impl ComfortLoop {
                 _ => Intervention::PlayOwnerVoice,
             },
             4 => {
-                // 4th alert - Notify User AND Last Autonomous Action
-                info!("Alert escalation: 4th alert - Notifying user and taking final autonomous action");
+                // 4th alert - Notify User (Info Level) AND Last Autonomous Action
+                info!("Alert escalation: 4th alert - Notifying user (Info) and taking final autonomous action");
                 // We return a composite or just notify for now as per "user preference" request implies notification is key.
                 // But user asked for "autonomous agent one last time".
                 // Let's assume we do PlayOwnerVoice + Notify.
                 // Limitation: Current Intervention enum is single-choice.
                 // Workaround: We will execute the autonomous action here manually, and return NotifyUser.
                 let autonomous_backup = Intervention::PlayOwnerVoice;
-                self.execute_action(&autonomous_backup, payload).await;
+                self.execute_action(&autonomous_backup, payload, alert_uuid)
+                    .await;
 
-                Intervention::NotifyUser(NotificationLevel::Standard)
+                Intervention::NotifyUser(NotificationLevel::Info)
             }
             _ => {
                 // 5+ alerts - High Severity (Controlled by final_severity logic)
@@ -418,7 +438,14 @@ impl ComfortLoop {
         }
     }
 
-    async fn generate_quick_actions(&self, alert_id: Uuid, pet_id: i32, severity: &str) {
+    async fn generate_quick_actions(
+        &self,
+        alert_id: Uuid,
+        pet_id: i32,
+        severity: &str,
+        alert_type: &str,
+        alert_message: &str,
+    ) {
         use crate::entities::{emergency_contact, quick_action};
 
         // 1. Get Pet and User info
@@ -468,13 +495,15 @@ impl ComfortLoop {
             // 4. Generate Personalized Content with Gemini
             let contact_name = &contact.name;
             let pet_name = &pet.name;
+
             let prompt = format!(
-                "Write a concise, urgent message from a pet monitoring system regarding {}. \
-                The recipient is {}, who is a {}. Severity: {}. \
-                The pet is showing unusual behavior. \
-                Generate a JSON object with two fields: 'sms_text' (short, <160 chars) and 'email_body' (polite, informative). \
+                "Write a highly personalized, empathetic, and urgent message from a pet monitoring system regarding {pet_name}. \
+                The recipient is {contact_name}, who is a {contact_type}. Severity: {severity}. \
+                The specific issue detected is: '{alert_type}' ({alert_message}). \
+                Please acknowledge that as a {contact_type}, they might be able to help immediately. \
+                Generate a JSON object with two fields: 'sms_text' (short, urgent, <160 chars) and 'email_body' (detailed, polite, providing context). \
                 Do not use markdown.",
-                pet_name, contact_name, contact.contact_type, severity
+                contact_type = contact.contact_type
             );
 
             let message_content = match self.gemini.generate_text(&prompt).await {
@@ -515,7 +544,12 @@ impl ComfortLoop {
         );
     }
 
-    async fn execute_action(&self, action: &Intervention, payload: &AlertPayload) {
+    async fn execute_action(
+        &self,
+        action: &Intervention,
+        payload: &AlertPayload,
+        alert_uuid: Uuid,
+    ) {
         info!("Executing intervention: {:?}", action);
         // TODO: Call Smart Home API / IoT Hub
         match action {
@@ -553,16 +587,33 @@ impl ComfortLoop {
                 let owner_phone =
                     std::env::var("OWNER_PHONE").unwrap_or("+15550000000".to_string());
 
-                let severity_str = match level {
-                    NotificationLevel::Critical => "CRITICAL",
-                    NotificationLevel::Standard => "HIGH",
+                let (severity_str, indicators, actions) = match level {
+                    NotificationLevel::Critical => {
+                        ("CRITICAL", Some(&[] as &[String]), Some(&[] as &[String]))
+                    } // Override logic usually handles critical separately
+                    NotificationLevel::Standard => ("HIGH", None, None), // Use payload or default
+                    NotificationLevel::Info => {
+                        ("NOTICE", Some(&[] as &[String]), Some(&[] as &[String]))
+                    } // No actions for Info
                 };
 
-                let video_link = payload
-                    .video_id
-                    .as_ref()
-                    .map(|v| format!("https://petpulse.dashboard/videos/{}", v))
-                    .unwrap_or_else(|| "https://petpulse.dashboard".to_string());
+                // Indicators/Actions to use
+                let final_indicators = if let Some(i) = indicators {
+                    i.to_vec()
+                } else {
+                    payload.critical_indicators.clone().unwrap_or_default()
+                };
+
+                let final_actions = if let Some(a) = actions {
+                    a.to_vec()
+                } else {
+                    payload.recommended_actions.clone().unwrap_or_default()
+                };
+
+                // Use internal alert_uuid for the link, as this matches our DB record
+                let frontend_url = std::env::var("FRONTEND_URL")
+                    .unwrap_or_else(|_| "https://www.petpulse.clestiq.com".to_string());
+                let alert_link = format!("{}/alerts/{}", frontend_url, alert_uuid);
 
                 self.notifier
                     .notify_critical_alert(
@@ -571,9 +622,10 @@ impl ComfortLoop {
                         &pet_name,
                         severity_str,
                         payload.message.as_deref().unwrap_or("Alert triggered"),
-                        &[],
-                        &[],
-                        &video_link,
+                        &final_indicators,
+                        &final_actions,
+                        &alert_link,
+                        &alert_uuid.to_string(),
                     )
                     .await;
             }
@@ -600,6 +652,7 @@ pub enum EnvironmentAction {
 
 #[derive(Debug, Clone, Serialize)]
 pub enum NotificationLevel {
+    Info,
     Standard,
     Critical,
 }

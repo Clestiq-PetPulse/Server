@@ -157,30 +157,17 @@ impl TwilioNotifier {
         description: &str,
         critical_indicators: &[String],
         recommended_actions: &[String],
-        video_link: &str,
+        alert_link: &str,
+        alert_id: &str,
     ) {
         // 1. Send Email via Pub/Sub (Cloud Function)
         if let Some(pub_sub) = &self.pub_sub_client {
-            // We need an ID for the alert to generate a link, but we don't have it passed here easily unless we change the signature.
-            // The Cloud Function expects 'id' for the link: /alerts/{id}
-            // For now, we'll use a placeholder or generate a random one if not provided,
-            // BUT ideally the caller should provide the Alert ID.
-            // Assuming description contains enough info or we pass "unknown".
-            // Actually, verify_escalation.sh doesn't seem to pass ID to this flow maybe?
-            // Let's check call site.
-
-            // Update: We'll construct a simple list string for the message
-            let message = format!(
-                "{}\n\nIndicators: {:?}\n\nActions: {:?}",
-                description, critical_indicators, recommended_actions
-            );
-
             let payload = AlertEmailPayload {
                 email: owner_email.to_string(),
                 pet_name: pet_name.to_string(),
-                message,
+                message: description.to_string(),
                 severity: severity.to_string(),
-                id: "latest".to_string(), // Metadata unavailable in this signature, TODO: Update signature
+                id: alert_id.to_string(),
                 title: Some(format!("Critical Alert for {}", pet_name)),
             };
 
@@ -195,7 +182,7 @@ impl TwilioNotifier {
                 &timestamp,
                 critical_indicators,
                 recommended_actions,
-                video_link,
+                alert_link,
             );
 
             let subject = format!("🚨 CRITICAL ALERT: {} needs attention!", pet_name);
@@ -210,7 +197,7 @@ impl TwilioNotifier {
 
         // 2. Send SMS
         let sms_body =
-            NotificationTemplates::critical_alert_sms(pet_name, severity, description, video_link);
+            NotificationTemplates::critical_alert_sms(pet_name, severity, description, alert_link);
 
         // Spawn SMS task
         let sms_notifier = self.clone();

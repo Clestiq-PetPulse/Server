@@ -13,7 +13,7 @@ set -e
 
 SERVER_URL="https://preview.petpulse.clestiq.com"
 COOKIE_JAR="cookies_escalation.txt"
-EMAIL="bhutvasu298@gmail.com"
+EMAIL="vasubhut157@gmail.com"
 PASSWORD="password123"
 
 # Colors
@@ -36,14 +36,30 @@ if [ ! -f "assets/pacing.mp4" ]; then
 fi
 
 # 1. Register & Login
-echo -e "\n${BLUE}--- Step 1: Register & Login ---${NC}"
-echo "Registering $EMAIL..."
-REGISTER_RES=$(curl -s -X POST $SERVER_URL/register -H "Content-Type: application/json" -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"name\":\"Escalation User\"}")
-USER_ID=$(echo $REGISTER_RES | jq -r '.id')
-echo "Registered User ID: $USER_ID"
+echo -e "\n${BLUE}--- Step 1: Login & Setup ---${NC}"
+echo "Attempting login for $EMAIL..."
+LOGIN_RES=$(curl -s -c $COOKIE_JAR -X POST $SERVER_URL/login -H "Content-Type: application/json" -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
 
-echo "Logging in..."
-curl -s -c $COOKIE_JAR -X POST $SERVER_URL/login -H "Content-Type: application/json" -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" > /dev/null
+if echo "$LOGIN_RES" | grep -q "Login successful" || echo "$LOGIN_RES" | grep -q "OK"; then
+    echo -e "${GREEN}Login successful!${NC}"
+else
+    echo "Login failed. Attempting registration..."
+    REGISTER_RES=$(curl -s -X POST $SERVER_URL/register -H "Content-Type: application/json" -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"name\":\"Escalation User\"}")
+    if echo "$REGISTER_RES" | grep -q "id"; then
+        echo -e "${GREEN}Registration successful!${NC}"
+        # Login again to get cookies
+        curl -s -c $COOKIE_JAR -X POST $SERVER_URL/login -H "Content-Type: application/json" -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" > /dev/null
+    else
+        echo -e "${RED}Registration failed: $REGISTER_RES${NC}"
+        exit 1
+    fi
+fi
+
+# Fetch User ID from /users endpoint (protected)
+echo "Fetching User ID..."
+USER_INFO=$(curl -s -b $COOKIE_JAR -X GET $SERVER_URL/users)
+USER_ID=$(echo $USER_INFO | jq -r '.id')
+echo -e "${GREEN}Logged in as User ID: $USER_ID${NC}"
 
 # 2. Create Pet
 echo -e "\n${BLUE}--- Step 2: Create Pet ---${NC}"
@@ -71,9 +87,10 @@ for ((i=1; i<=5; i++)); do
     echo "Waiting 30s for processing..."
     sleep 30
 
-    # Show logs specifically for this alert processing (last 30 seconds of logs?)
+    # Show logs specifically for this alert processing from K8s
     echo "--- Agent Logs for Alert $i ---"
-    docker logs petpulse_agent --tail 20 2>&1 | grep -E "Deciding intervention|Action:|Escalation|ComfortLoop" || true
+    AGENT_POD=$(kubectl get pods -l app=petpulse-agent -o jsonpath="{.items[0].metadata.name}")
+    kubectl logs "$AGENT_POD" --tail 20 2>&1 | grep -E "Deciding intervention|Action:|Escalation|ComfortLoop" || true
     echo "-------------------------------"
     
     # Optional: Check standard output logs to confirm progression
@@ -84,18 +101,26 @@ for ((i=1; i<=5; i++)); do
     fi
 done
 
-# 5. Verification
-echo -e "\n${BLUE}--- Step 5: Verifying Results ---${NC}"
+# Check Alerts via API
+echo "Checking recent alerts via API..."
+ALERTS_JSON=$(curl -s -b $COOKIE_JAR -X GET "$SERVER_URL/pets/$PET_ID/alerts")
+echo "$ALERTS_JSON" | jq -r '.alerts[]? | "ID: \(.id), Severity: \(.severity_level), Action: \(.intervention_action)"' | head -n 5
 
-# Check Alerts table for severity escalation
-echo "Checking recent alerts for High Severity..."
-docker exec petpulse_db psql -U user -d petpulse -c \
-    "SELECT id, severity_level, intervention_action FROM alerts WHERE pet_id=$PET_ID ORDER BY created_at DESC LIMIT 5;" 
-
-# Check Quick Actions table
-echo "Checking for Generated Quick Actions..."
-docker exec petpulse_db psql -U user -d petpulse -c \
-    "SELECT id, action_type, message, status FROM quick_actions WHERE emergency_contact_id=$CONTACT_ID ORDER BY created_at DESC;"
+# Check Quick Actions via API
+echo -e "\nChecking for Generated Quick Actions via API..."
+# First get all alerts to find their UUIDs
+ALL_ALERTS=$(curl -s -b $COOKIE_JAR -X GET "$SERVER_URL/alerts")
+if echo "$ALL_ALERTS" | jq -e 'type == "array"' > /dev/null 2>&1; then
+    echo "$ALL_ALERTS" | jq -r '.[].id' | while read -r ALERT_UUID; do
+        ACTIONS_RES=$(curl -s -b $COOKIE_JAR -X GET "$SERVER_URL/alerts/$ALERT_UUID/quick-actions")
+        if echo "$ACTIONS_RES" | jq -e 'type == "array" and length > 0' > /dev/null 2>&1; then
+            echo "Alert $ALERT_UUID actions:"
+            echo "$ACTIONS_RES" | jq .
+        fi
+    done
+else
+    echo -e "${RED}Failed to fetch alerts or user has no alerts (Response: $ALL_ALERTS)${NC}"
+fi
 
 echo -e "\n${GREEN}Test Complete. Review DB output above.${NC}"
 rm -f $COOKIE_JAR

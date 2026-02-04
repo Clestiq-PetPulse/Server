@@ -1,29 +1,19 @@
-use serde::Serialize;
-
 pub struct NotificationTemplates;
 
 impl NotificationTemplates {
+    /// Generates a rich HTML email template for critical alerts
     /// Generates a rich HTML email template for critical alerts
     pub fn critical_alert_email(
         pet_name: &str,
         severity: &str,
         description: &str,
         started_at: &str,
-        critical_indicators: &[String],
-        recommended_actions: &[String],
-        video_link: &str,
+        _critical_indicators: &[String],
+        _recommended_actions: &[String],
+        alert_link: &str,
     ) -> String {
-        let indicators_html = critical_indicators
-            .iter()
-            .map(|i| format!("<li>{}</li>", i))
-            .collect::<Vec<_>>()
-            .join("");
-
-        let actions_html = recommended_actions
-            .iter()
-            .map(|a| format!("<li>{}</li>", a))
-            .collect::<Vec<_>>()
-            .join("");
+        // Indicators and actions are intentionally omitted from the simplified email template
+        // as per the requirement for 'Only pet name and message'.
 
         format!(
             r#"
@@ -38,45 +28,24 @@ impl NotificationTemplates {
         .alert-badge {{ background-color: #d63031; color: white; padding: 5px 10px; border-radius: 4px; font-weight: bold; display: inline-block; margin-top: 10px; }}
         .content {{ padding: 20px; }}
         .section {{ margin-bottom: 20px; }}
-        .section h3 {{ border-bottom: 2px solid #eee; padding-bottom: 5px; color: #636e72; }}
         .button {{ display: inline-block; background-color: #0984e3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; }}
         .footer {{ margin-top: 30px; font-size: 12px; color: #b2bec3; text-align: center; }}
-        ul {{ padding-left: 20px; }}
-        li {{ margin-bottom: 5px; }}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚨 PetPulse Critical Alert</h1>
+            <h1>🚨 PetPulse Alert</h1>
             <div class="alert-badge">SEVERITY: {severity}</div>
         </div>
         <div class="content">
-            <p><strong>Immediate Attention Required for {pet_name}</strong></p>
+            <p><strong>Attention for {pet_name}</strong></p>
             <p>{description}</p>
             <p><strong>Time:</strong> {started_at}</p>
 
-            <div class="section">
-                <h3>⚠️ Critical Indicators Observed</h3>
-                <ul>
-                    {indicators_html}
-                </ul>
-            </div>
-
-            <div class="section">
-                <h3>📋 Recommended Actions</h3>
-                <ul>
-                    {actions_html}
-                </ul>
-            </div>
-
             <div class="section" style="text-align: center; margin-top: 30px;">
-                <a href="{video_link}" class="button">📺 View Video Clip</a>
+                <a href="{alert_link}" class="button">👁️ See Alert Details</a>
             </div>
-            
-            <p style="text-align: center; margin-top: 20px;">
-                <small>This link expires in 24 hours.</small>
-            </p>
         </div>
         <div class="footer">
             <p>Sent by PetPulse Autonomous Monitoring System</p>
@@ -89,9 +58,7 @@ impl NotificationTemplates {
             pet_name = pet_name,
             description = description,
             started_at = started_at,
-            indicators_html = indicators_html,
-            actions_html = actions_html,
-            video_link = video_link
+            alert_link = alert_link
         )
     }
 
@@ -100,7 +67,7 @@ impl NotificationTemplates {
         pet_name: &str,
         severity: &str,
         description: &str,
-        video_link: &str,
+        alert_link: &str,
     ) -> String {
         // Truncate description if too long
         let short_desc = if description.len() > 50 {
@@ -110,11 +77,11 @@ impl NotificationTemplates {
         };
 
         format!(
-            "🚨 PetPulse ALERT: {} - {}\nSeverity: {}\nView: {}",
+            "🚨 PetPulse ALERT: {} - {}\nSeverity: {}\nDetails: {}",
             pet_name,
             short_desc,
             severity.to_uppercase(),
-            video_link
+            alert_link
         )
     }
 }
