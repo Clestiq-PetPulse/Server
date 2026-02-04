@@ -9,6 +9,7 @@ mod m20260127_000001_create_alerts_table;
 mod m20260128_000001_enhance_alerts_table;
 mod m20260130_000001_create_emergency_contacts;
 mod m20260130_000002_create_quick_actions;
+mod m20260204_000001_add_resolved_at_to_alerts;
 
 pub struct Migrator;
 
@@ -25,6 +26,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260128_000001_enhance_alerts_table::Migration),
             Box::new(m20260130_000001_create_emergency_contacts::Migration),
             Box::new(m20260130_000002_create_quick_actions::Migration),
+            Box::new(m20260204_000001_add_resolved_at_to_alerts::Migration),
         ]
     }
 }

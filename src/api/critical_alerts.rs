@@ -48,6 +48,7 @@ pub struct AlertResponse {
     pub notification_channels: Option<serde_json::Value>,
     pub intervention_action: Option<String>,
     pub video_id: Option<String>,
+    pub resolved_at: Option<chrono::NaiveDateTime>,
 }
 
 #[derive(Serialize)]
@@ -61,6 +62,11 @@ pub struct AlertListResponse {
 #[derive(Deserialize)]
 pub struct AcknowledgeRequest {
     pub response: String,
+}
+
+#[derive(Deserialize)]
+pub struct ResolveRequest {
+    pub note: Option<String>,
 }
 
 // GET /alerts - List all alerts for authenticated user
@@ -157,6 +163,7 @@ pub async fn list_user_alerts(
                         .payload
                         .get("video_id")
                         .and_then(|v| v.as_str().map(String::from)),
+                    resolved_at: alert.resolved_at,
                 })
                 .collect();
 
@@ -255,6 +262,7 @@ pub async fn list_pet_alerts(
                         .payload
                         .get("video_id")
                         .and_then(|v| v.as_str().map(String::from)),
+                    resolved_at: alert.resolved_at,
                 })
                 .collect();
 
@@ -320,6 +328,7 @@ pub async fn get_pending_critical_alerts(
                         .payload
                         .get("video_id")
                         .and_then(|v| v.as_str().map(String::from)),
+                    resolved_at: alert.resolved_at,
                 })
                 .collect();
 
@@ -389,6 +398,7 @@ pub async fn acknowledge_alert(
 pub async fn resolve_alert(
     Extension(db): Extension<DatabaseConnection>,
     Path(alert_id): Path<Uuid>,
+    Json(payload): Json<ResolveRequest>,
 ) -> impl IntoResponse {
     let alert = match Alerts::find_by_id(alert_id).one(&db).await {
         Ok(Some(a)) => a,
@@ -404,7 +414,12 @@ pub async fn resolve_alert(
     };
 
     let mut active_model: alerts::ActiveModel = alert.into();
-    active_model.outcome = Set(Some("Resolved".to_string())); // Standardized string
+    let outcome_text = payload
+        .note
+        .map(|n| format!("Resolved: {}", n))
+        .unwrap_or_else(|| "Resolved".to_string());
+    active_model.outcome = Set(Some(outcome_text));
+    active_model.resolved_at = Set(Some(chrono::Utc::now().naive_utc()));
 
     match active_model.update(&db).await {
         Ok(_) => (
@@ -467,6 +482,7 @@ pub async fn get_alert(
             .payload
             .get("video_id")
             .and_then(|v| v.as_str().map(String::from)),
+        resolved_at: alert.resolved_at,
     };
 
     (axum::http::StatusCode::OK, Json(response)).into_response()
