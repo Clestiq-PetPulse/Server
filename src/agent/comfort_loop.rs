@@ -397,8 +397,8 @@ impl ComfortLoop {
                 _ => Intervention::PlayOwnerVoice,
             },
             4 => {
-                // 4th alert - Notify User AND Last Autonomous Action
-                info!("Alert escalation: 4th alert - Notifying user and taking final autonomous action");
+                // 4th alert - Notify User (Info Level) AND Last Autonomous Action
+                info!("Alert escalation: 4th alert - Notifying user (Info) and taking final autonomous action");
                 // We return a composite or just notify for now as per "user preference" request implies notification is key.
                 // But user asked for "autonomous agent one last time".
                 // Let's assume we do PlayOwnerVoice + Notify.
@@ -407,7 +407,7 @@ impl ComfortLoop {
                 let autonomous_backup = Intervention::PlayOwnerVoice;
                 self.execute_action(&autonomous_backup, payload).await;
 
-                Intervention::NotifyUser(NotificationLevel::Standard)
+                Intervention::NotifyUser(NotificationLevel::Info)
             }
             _ => {
                 // 5+ alerts - High Severity (Controlled by final_severity logic)
@@ -553,16 +553,27 @@ impl ComfortLoop {
                 let owner_phone =
                     std::env::var("OWNER_PHONE").unwrap_or("+15550000000".to_string());
 
-                let severity_str = match level {
-                    NotificationLevel::Critical => "CRITICAL",
-                    NotificationLevel::Standard => "HIGH",
+                let (severity_str, indicators, actions) = match level {
+                    NotificationLevel::Critical => ("CRITICAL", Some(&[] as &[String]), Some(&[] as &[String])), // Override logic usually handles critical separately
+                    NotificationLevel::Standard => ("HIGH", None, None), // Use payload or default
+                    NotificationLevel::Info => ("NOTICE", Some(&[] as &[String]), Some(&[] as &[String])), // No actions for Info
+                };
+                
+                // Indicators/Actions to use
+                let final_indicators = if let Some(i) = indicators {
+                   i.to_vec()
+                } else {
+                   payload.critical_indicators.clone().unwrap_or_default()
                 };
 
-                let video_link = payload
-                    .video_id
-                    .as_ref()
-                    .map(|v| format!("https://petpulse.dashboard/videos/{}", v))
-                    .unwrap_or_else(|| "https://petpulse.dashboard".to_string());
+                let final_actions = if let Some(a) = actions {
+                   a.to_vec()
+                } else {
+                   payload.recommended_actions.clone().unwrap_or_default()
+                };
+
+                // Use Alert ID for the link, not Video ID
+                let alert_link = format!("https://petpulse.dashboard/alerts/{}", payload.alert_id);
 
                 self.notifier
                     .notify_critical_alert(
@@ -571,9 +582,9 @@ impl ComfortLoop {
                         &pet_name,
                         severity_str,
                         payload.message.as_deref().unwrap_or("Alert triggered"),
-                        &[],
-                        &[],
-                        &video_link,
+                        &final_indicators,
+                        &final_actions,
+                        &alert_link,
                     )
                     .await;
             }
@@ -600,6 +611,7 @@ pub enum EnvironmentAction {
 
 #[derive(Debug, Clone, Serialize)]
 pub enum NotificationLevel {
+    Info,
     Standard,
     Critical,
 }
