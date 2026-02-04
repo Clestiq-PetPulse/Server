@@ -76,7 +76,6 @@ impl ToString for AlertType {
 }
 
 use crate::notifications::TwilioNotifier;
-use sea_orm::ActiveValue::NotSet;
 
 // Intervention Logic
 pub struct ComfortLoop {
@@ -238,16 +237,28 @@ impl ComfortLoop {
             .await;
 
             // Also generate Quick Actions for Critical
-            self.generate_quick_actions(alert_uuid, db_pet_id, "critical")
-                .await;
+            self.generate_quick_actions(
+                alert_uuid,
+                db_pet_id,
+                "critical",
+                &payload.alert_type.to_string(),
+                payload.message.as_deref().unwrap_or("Critical health indicator detected"),
+            )
+            .await;
 
             return; // Skip normal monitoring/resolution loop for critical alerts
         }
 
         // Handle High Severity (Persistent) - Generate Quick Actions
         if final_severity == "high" {
-            self.generate_quick_actions(alert_uuid, db_pet_id, "high")
-                .await;
+            self.generate_quick_actions(
+                alert_uuid,
+                db_pet_id,
+                "high",
+                &payload.alert_type.to_string(),
+                payload.message.as_deref().unwrap_or("Unusual behavior detected"),
+            )
+            .await;
         }
 
         // 6. Continuous Monitoring - wait and check for resolution
@@ -324,7 +335,7 @@ impl ComfortLoop {
         let alert_link = format!(
             "{}/alerts/{}",
             std::env::var("FRONTEND_URL").unwrap_or_else(|_| "https://preview.petpulse.clestiq.com".to_string()),
-            alert_uuid
+            payload.alert_id
         );
 
         // Send Notifications
@@ -416,7 +427,14 @@ impl ComfortLoop {
         }
     }
 
-    async fn generate_quick_actions(&self, alert_id: Uuid, pet_id: i32, severity: &str) {
+    async fn generate_quick_actions(
+        &self,
+        alert_id: Uuid,
+        pet_id: i32,
+        severity: &str,
+        alert_type: &str,
+        alert_message: &str,
+    ) {
         use crate::entities::{emergency_contact, quick_action};
 
         // 1. Get Pet and User info
@@ -466,13 +484,11 @@ impl ComfortLoop {
             // 4. Generate Personalized Content with Gemini
             let contact_name = &contact.name;
             let pet_name = &pet.name;
-            let alert_type_str = payload.alert_type.to_string();
-            let alert_message = payload.message.as_deref().unwrap_or("unusual behavior");
 
             let prompt = format!(
                 "Write a highly personalized, empathetic, and urgent message from a pet monitoring system regarding {pet_name}. \
                 The recipient is {contact_name}, who is a {contact_type}. Severity: {severity}. \
-                The specific issue detected is: '{alert_type_str}' ({alert_message}). \
+                The specific issue detected is: '{alert_type}' ({alert_message}). \
                 Please acknowledge that as a {contact_type}, they might be able to help immediately. \
                 Generate a JSON object with two fields: 'sms_text' (short, urgent, <160 chars) and 'email_body' (detailed, polite, providing context). \
                 Do not use markdown.",
