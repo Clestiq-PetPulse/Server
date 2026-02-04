@@ -321,13 +321,11 @@ impl ComfortLoop {
 
         let owner_phone = std::env::var("OWNER_PHONE").unwrap_or("+15550000000".to_string());
 
-        let video_link = if let Some(vid) = &payload.video_id {
-            // In a real scenario, generate a signed URL here.
-            // For now, use a direct link placeholder
-            format!("https://petpulse.dashboard/videos/{}", vid)
-        } else {
-            "https://petpulse.dashboard".to_string()
-        };
+        let alert_link = format!(
+            "{}/alerts/{}",
+            std::env::var("FRONTEND_URL").unwrap_or_else(|_| "https://preview.petpulse.clestiq.com".to_string()),
+            alert_uuid
+        );
 
         // Send Notifications
         self.notifier
@@ -342,7 +340,7 @@ impl ComfortLoop {
                     .unwrap_or("Critical health indicator detected"),
                 critical_indicators.as_deref().unwrap_or(&[]),
                 recommended_actions.as_deref().unwrap_or(&[]),
-                &video_link,
+                &alert_link,
             )
             .await;
 
@@ -468,13 +466,17 @@ impl ComfortLoop {
             // 4. Generate Personalized Content with Gemini
             let contact_name = &contact.name;
             let pet_name = &pet.name;
+            let alert_type_str = payload.alert_type.to_string();
+            let alert_message = payload.message.as_deref().unwrap_or("unusual behavior");
+
             let prompt = format!(
-                "Write a concise, urgent message from a pet monitoring system regarding {}. \
-                The recipient is {}, who is a {}. Severity: {}. \
-                The pet is showing unusual behavior. \
-                Generate a JSON object with two fields: 'sms_text' (short, <160 chars) and 'email_body' (polite, informative). \
+                "Write a highly personalized, empathetic, and urgent message from a pet monitoring system regarding {pet_name}. \
+                The recipient is {contact_name}, who is a {contact_type}. Severity: {severity}. \
+                The specific issue detected is: '{alert_type_str}' ({alert_message}). \
+                Please acknowledge that as a {contact_type}, they might be able to help immediately. \
+                Generate a JSON object with two fields: 'sms_text' (short, urgent, <160 chars) and 'email_body' (detailed, polite, providing context). \
                 Do not use markdown.",
-                pet_name, contact_name, contact.contact_type, severity
+                contact_type = contact.contact_type
             );
 
             let message_content = match self.gemini.generate_text(&prompt).await {
@@ -573,7 +575,9 @@ impl ComfortLoop {
                 };
 
                 // Use Alert ID for the link, not Video ID
-                let alert_link = format!("https://petpulse.dashboard/alerts/{}", payload.alert_id);
+                let frontend_url = std::env::var("FRONTEND_URL")
+                    .unwrap_or_else(|_| "https://preview.petpulse.clestiq.com".to_string());
+                let alert_link = format!("{}/alerts/{}", frontend_url, payload.alert_id);
 
                 self.notifier
                     .notify_critical_alert(
