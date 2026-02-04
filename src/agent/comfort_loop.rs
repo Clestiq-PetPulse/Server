@@ -210,7 +210,8 @@ impl ComfortLoop {
             .await;
 
         // 4. Execute Action
-        self.execute_action(&intervention, &payload, alert_uuid).await;
+        self.execute_action(&intervention, &payload, alert_uuid)
+            .await;
 
         // 5. Update DB with Action
         let update_model = alerts::ActiveModel {
@@ -242,7 +243,10 @@ impl ComfortLoop {
                 db_pet_id,
                 "critical",
                 &payload.alert_type.to_string(),
-                payload.message.as_deref().unwrap_or("Critical health indicator detected"),
+                payload
+                    .message
+                    .as_deref()
+                    .unwrap_or("Critical health indicator detected"),
             )
             .await;
 
@@ -256,7 +260,10 @@ impl ComfortLoop {
                 db_pet_id,
                 "high",
                 &payload.alert_type.to_string(),
-                payload.message.as_deref().unwrap_or("Unusual behavior detected"),
+                payload
+                    .message
+                    .as_deref()
+                    .unwrap_or("Unusual behavior detected"),
             )
             .await;
         }
@@ -334,7 +341,8 @@ impl ComfortLoop {
 
         let alert_link = format!(
             "{}/alerts/{}",
-            std::env::var("FRONTEND_URL").unwrap_or_else(|_| "https://www.petpulse.clestiq.com".to_string()),
+            std::env::var("FRONTEND_URL")
+                .unwrap_or_else(|_| "https://www.petpulse.clestiq.com".to_string()),
             alert_uuid
         );
 
@@ -416,7 +424,8 @@ impl ComfortLoop {
                 // Limitation: Current Intervention enum is single-choice.
                 // Workaround: We will execute the autonomous action here manually, and return NotifyUser.
                 let autonomous_backup = Intervention::PlayOwnerVoice;
-                self.execute_action(&autonomous_backup, payload, alert_uuid).await;
+                self.execute_action(&autonomous_backup, payload, alert_uuid)
+                    .await;
 
                 Intervention::NotifyUser(NotificationLevel::Info)
             }
@@ -535,7 +544,12 @@ impl ComfortLoop {
         );
     }
 
-    async fn execute_action(&self, action: &Intervention, payload: &AlertPayload, alert_uuid: Uuid) {
+    async fn execute_action(
+        &self,
+        action: &Intervention,
+        payload: &AlertPayload,
+        alert_uuid: Uuid,
+    ) {
         info!("Executing intervention: {:?}", action);
         // TODO: Call Smart Home API / IoT Hub
         match action {
@@ -574,22 +588,26 @@ impl ComfortLoop {
                     std::env::var("OWNER_PHONE").unwrap_or("+15550000000".to_string());
 
                 let (severity_str, indicators, actions) = match level {
-                    NotificationLevel::Critical => ("CRITICAL", Some(&[] as &[String]), Some(&[] as &[String])), // Override logic usually handles critical separately
+                    NotificationLevel::Critical => {
+                        ("CRITICAL", Some(&[] as &[String]), Some(&[] as &[String]))
+                    } // Override logic usually handles critical separately
                     NotificationLevel::Standard => ("HIGH", None, None), // Use payload or default
-                    NotificationLevel::Info => ("NOTICE", Some(&[] as &[String]), Some(&[] as &[String])), // No actions for Info
+                    NotificationLevel::Info => {
+                        ("NOTICE", Some(&[] as &[String]), Some(&[] as &[String]))
+                    } // No actions for Info
                 };
-                
+
                 // Indicators/Actions to use
                 let final_indicators = if let Some(i) = indicators {
-                   i.to_vec()
+                    i.to_vec()
                 } else {
-                   payload.critical_indicators.clone().unwrap_or_default()
+                    payload.critical_indicators.clone().unwrap_or_default()
                 };
 
                 let final_actions = if let Some(a) = actions {
-                   a.to_vec()
+                    a.to_vec()
                 } else {
-                   payload.recommended_actions.clone().unwrap_or_default()
+                    payload.recommended_actions.clone().unwrap_or_default()
                 };
 
                 // Use internal alert_uuid for the link, as this matches our DB record
