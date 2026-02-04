@@ -13,7 +13,7 @@ set -e
 
 SERVER_URL="https://preview.petpulse.clestiq.com"
 COOKIE_JAR="cookies_escalation.txt"
-EMAIL="vasubhut25102002@gmail.com"
+EMAIL="vasubhut157@gmail.com"
 PASSWORD="password123"
 
 # Colors
@@ -104,19 +104,23 @@ done
 # Check Alerts via API
 echo "Checking recent alerts via API..."
 ALERTS_JSON=$(curl -s -b $COOKIE_JAR -X GET "$SERVER_URL/pets/$PET_ID/alerts")
-echo "$ALERTS_JSON" | jq -r '.[]? | "ID: \(.id), Severity: \(.severity_level), Action: \(.intervention_action)"' | head -n 5
+echo "$ALERTS_JSON" | jq -r '.alerts[]? | "ID: \(.id), Severity: \(.severity_level), Action: \(.intervention_action)"' | head -n 5
 
 # Check Quick Actions via API
 echo -e "\nChecking for Generated Quick Actions via API..."
 # First get all alerts to find their UUIDs
 ALL_ALERTS=$(curl -s -b $COOKIE_JAR -X GET "$SERVER_URL/alerts")
-echo "$ALL_ALERTS" | jq -r '.[].id' | while read -r ALERT_UUID; do
-    ACTIONS_RES=$(curl -s -b $COOKIE_JAR -X GET "$SERVER_URL/alerts/$ALERT_UUID/quick-actions")
-    if echo "$ACTIONS_RES" | jq -e '. | length > 0' > /dev/null 2>&1; then
-        echo "Alert $ALERT_UUID actions:"
-        echo "$ACTIONS_RES" | jq .
-    fi
-done
+if echo "$ALL_ALERTS" | jq -e 'type == "array"' > /dev/null 2>&1; then
+    echo "$ALL_ALERTS" | jq -r '.[].id' | while read -r ALERT_UUID; do
+        ACTIONS_RES=$(curl -s -b $COOKIE_JAR -X GET "$SERVER_URL/alerts/$ALERT_UUID/quick-actions")
+        if echo "$ACTIONS_RES" | jq -e 'type == "array" and length > 0' > /dev/null 2>&1; then
+            echo "Alert $ALERT_UUID actions:"
+            echo "$ACTIONS_RES" | jq .
+        fi
+    done
+else
+    echo -e "${RED}Failed to fetch alerts or user has no alerts (Response: $ALL_ALERTS)${NC}"
+fi
 
 echo -e "\n${GREEN}Test Complete. Review DB output above.${NC}"
 rm -f $COOKIE_JAR
