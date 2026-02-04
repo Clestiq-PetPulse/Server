@@ -19,7 +19,7 @@ pub async fn init_metrics(db: &DatabaseConnection) {
     // Ideally use a join query: SELECT u.name, COUNT(p.id) FROM...
     // But for "init", simple iteration is safe enough for demo scale.
 
-    use sea_orm::{ColumnTrait, LoaderTrait, ModelTrait, QueryFilter, QuerySelect};
+    use sea_orm::{ColumnTrait, QueryFilter};
 
     let users = user::Entity::find().all(db).await.unwrap_or_default();
     // Load pets for all users? Or just count?

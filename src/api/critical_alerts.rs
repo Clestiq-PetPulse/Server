@@ -9,8 +9,7 @@ use sea_orm::{
     QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tracing::{error, info};
+use tracing::error;
 use uuid::Uuid;
 
 #[derive(Deserialize)]
