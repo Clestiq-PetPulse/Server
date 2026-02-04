@@ -9,7 +9,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::entities::{
-    alerts, emergency_contact, pet, prelude::*, quick_action, EmergencyContact, QuickAction,
+    emergency_contact, prelude::*, quick_action, EmergencyContact, QuickAction,
 };
 
 #[derive(Deserialize)]

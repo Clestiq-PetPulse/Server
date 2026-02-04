@@ -1,5 +1,3 @@
-use serde::Serialize;
-
 pub struct NotificationTemplates;
 
 impl NotificationTemplates {
@@ -10,37 +8,12 @@ impl NotificationTemplates {
         severity: &str,
         description: &str,
         started_at: &str,
-        critical_indicators: &[String],
-        recommended_actions: &[String],
+        _critical_indicators: &[String],
+        _recommended_actions: &[String],
         alert_link: &str,
     ) -> String {
-        let indicators_section = if !critical_indicators.is_empty() {
-             let list_items = critical_indicators
-                .iter()
-                .map(|i| format!("<li>{}</li>", i))
-                .collect::<Vec<_>>()
-                .join("");
-             format!(
-                r#"<div class="section"><h3>⚠️ Critical Indicators Observed</h3><ul>{}</ul></div>"#,
-                list_items
-             )
-        } else {
-             "".to_string()
-        };
-
-        let actions_section = if !recommended_actions.is_empty() {
-             let list_items = recommended_actions
-                .iter()
-                .map(|a| format!("<li>{}</li>", a))
-                .collect::<Vec<_>>()
-                .join("");
-             format!(
-                r#"<div class="section"><h3>📋 Recommended Actions</h3><ul>{}</ul></div>"#,
-                list_items
-             )
-        } else {
-             "".to_string()
-        };
+        // Indicators and actions are intentionally omitted from the simplified email template
+        // as per the requirement for 'Only pet name and message'.
 
         format!(
             r#"
@@ -55,11 +28,8 @@ impl NotificationTemplates {
         .alert-badge {{ background-color: #d63031; color: white; padding: 5px 10px; border-radius: 4px; font-weight: bold; display: inline-block; margin-top: 10px; }}
         .content {{ padding: 20px; }}
         .section {{ margin-bottom: 20px; }}
-        .section h3 {{ border-bottom: 2px solid #eee; padding-bottom: 5px; color: #636e72; }}
         .button {{ display: inline-block; background-color: #0984e3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; }}
         .footer {{ margin-top: 30px; font-size: 12px; color: #b2bec3; text-align: center; }}
-        ul {{ padding-left: 20px; }}
-        li {{ margin-bottom: 5px; }}
     </style>
 </head>
 <body>
@@ -72,10 +42,6 @@ impl NotificationTemplates {
             <p><strong>Attention for {pet_name}</strong></p>
             <p>{description}</p>
             <p><strong>Time:</strong> {started_at}</p>
-
-            {indicators_section}
-
-            {actions_section}
 
             <div class="section" style="text-align: center; margin-top: 30px;">
                 <a href="{alert_link}" class="button">👁️ See Alert Details</a>
@@ -92,8 +58,6 @@ impl NotificationTemplates {
             pet_name = pet_name,
             description = description,
             started_at = started_at,
-            indicators_section = indicators_section,
-            actions_section = actions_section,
             alert_link = alert_link
         )
     }

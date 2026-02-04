@@ -9,7 +9,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
-use crate::entities::{emergency_contact, prelude::*, EmergencyContact};
+use crate::entities::{emergency_contact, EmergencyContact};
 
 #[derive(Deserialize)]
 pub struct CreateEmergencyContactRequest {

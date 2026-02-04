@@ -206,11 +206,11 @@ impl ComfortLoop {
 
         // 4. Decide Intervention (escalating based on count)
         let intervention = self
-            .decide_intervention(&payload, current_alert_count, &final_severity)
+            .decide_intervention(&payload, current_alert_count, &final_severity, alert_uuid)
             .await;
 
         // 4. Execute Action
-        self.execute_action(&intervention, &payload).await;
+        self.execute_action(&intervention, &payload, alert_uuid).await;
 
         // 5. Update DB with Action
         let update_model = alerts::ActiveModel {
@@ -334,7 +334,7 @@ impl ComfortLoop {
 
         let alert_link = format!(
             "{}/alerts/{}",
-            std::env::var("FRONTEND_URL").unwrap_or_else(|_| "https://preview.petpulse.clestiq.com".to_string()),
+            std::env::var("FRONTEND_URL").unwrap_or_else(|_| "https://www.petpulse.clestiq.com".to_string()),
             payload.alert_id
         );
 
@@ -376,6 +376,7 @@ impl ComfortLoop {
         payload: &AlertPayload,
         alert_count: u64,
         severity_level: &str,
+        alert_uuid: Uuid,
     ) -> Intervention {
         // If critical, immediately escalate to Notification (handled in main loop branching, but good for safety)
         if severity_level == "critical" {
@@ -414,7 +415,7 @@ impl ComfortLoop {
                 // Limitation: Current Intervention enum is single-choice.
                 // Workaround: We will execute the autonomous action here manually, and return NotifyUser.
                 let autonomous_backup = Intervention::PlayOwnerVoice;
-                self.execute_action(&autonomous_backup, payload).await;
+                self.execute_action(&autonomous_backup, payload, alert_uuid).await;
 
                 Intervention::NotifyUser(NotificationLevel::Info)
             }
@@ -533,7 +534,7 @@ impl ComfortLoop {
         );
     }
 
-    async fn execute_action(&self, action: &Intervention, payload: &AlertPayload) {
+    async fn execute_action(&self, action: &Intervention, payload: &AlertPayload, alert_uuid: Uuid) {
         info!("Executing intervention: {:?}", action);
         // TODO: Call Smart Home API / IoT Hub
         match action {
@@ -590,10 +591,10 @@ impl ComfortLoop {
                    payload.recommended_actions.clone().unwrap_or_default()
                 };
 
-                // Use Alert ID for the link, not Video ID
+                // Use internal alert_uuid for the link, as this matches our DB record
                 let frontend_url = std::env::var("FRONTEND_URL")
-                    .unwrap_or_else(|_| "https://preview.petpulse.clestiq.com".to_string());
-                let alert_link = format!("{}/alerts/{}", frontend_url, payload.alert_id);
+                    .unwrap_or_else(|_| "https://www.petpulse.clestiq.com".to_string());
+                let alert_link = format!("{}/alerts/{}", frontend_url, alert_uuid);
 
                 self.notifier
                     .notify_critical_alert(

@@ -191,7 +191,6 @@ pub async fn generate_daily_digest(
     // Since we don't have GROUP BY easily in ORM, let's fetch all processed videos for the date.
     // Ideally query pets then videos.
 
-    use sea_orm::QuerySelect;
 
     // 1. Find all videos processed on this date
     // Note: 'created_at' is DateTimeWithTimeZone. We need to cast or filter by range.
