@@ -4,6 +4,7 @@ pub struct NotificationTemplates;
 
 impl NotificationTemplates {
     /// Generates a rich HTML email template for critical alerts
+    /// Generates a rich HTML email template for critical alerts
     pub fn critical_alert_email(
         pet_name: &str,
         severity: &str,
@@ -11,19 +12,35 @@ impl NotificationTemplates {
         started_at: &str,
         critical_indicators: &[String],
         recommended_actions: &[String],
-        video_link: &str,
+        alert_link: &str,
     ) -> String {
-        let indicators_html = critical_indicators
-            .iter()
-            .map(|i| format!("<li>{}</li>", i))
-            .collect::<Vec<_>>()
-            .join("");
+        let indicators_section = if !critical_indicators.is_empty() {
+             let list_items = critical_indicators
+                .iter()
+                .map(|i| format!("<li>{}</li>", i))
+                .collect::<Vec<_>>()
+                .join("");
+             format!(
+                r#"<div class="section"><h3>⚠️ Critical Indicators Observed</h3><ul>{}</ul></div>"#,
+                list_items
+             )
+        } else {
+             "".to_string()
+        };
 
-        let actions_html = recommended_actions
-            .iter()
-            .map(|a| format!("<li>{}</li>", a))
-            .collect::<Vec<_>>()
-            .join("");
+        let actions_section = if !recommended_actions.is_empty() {
+             let list_items = recommended_actions
+                .iter()
+                .map(|a| format!("<li>{}</li>", a))
+                .collect::<Vec<_>>()
+                .join("");
+             format!(
+                r#"<div class="section"><h3>📋 Recommended Actions</h3><ul>{}</ul></div>"#,
+                list_items
+             )
+        } else {
+             "".to_string()
+        };
 
         format!(
             r#"
@@ -48,35 +65,21 @@ impl NotificationTemplates {
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚨 PetPulse Critical Alert</h1>
+            <h1>🚨 PetPulse Alert</h1>
             <div class="alert-badge">SEVERITY: {severity}</div>
         </div>
         <div class="content">
-            <p><strong>Immediate Attention Required for {pet_name}</strong></p>
+            <p><strong>Attention for {pet_name}</strong></p>
             <p>{description}</p>
             <p><strong>Time:</strong> {started_at}</p>
 
-            <div class="section">
-                <h3>⚠️ Critical Indicators Observed</h3>
-                <ul>
-                    {indicators_html}
-                </ul>
-            </div>
+            {indicators_section}
 
-            <div class="section">
-                <h3>📋 Recommended Actions</h3>
-                <ul>
-                    {actions_html}
-                </ul>
-            </div>
+            {actions_section}
 
             <div class="section" style="text-align: center; margin-top: 30px;">
-                <a href="{video_link}" class="button">📺 View Video Clip</a>
+                <a href="{alert_link}" class="button">👁️ See Alert Details</a>
             </div>
-            
-            <p style="text-align: center; margin-top: 20px;">
-                <small>This link expires in 24 hours.</small>
-            </p>
         </div>
         <div class="footer">
             <p>Sent by PetPulse Autonomous Monitoring System</p>
@@ -89,9 +92,9 @@ impl NotificationTemplates {
             pet_name = pet_name,
             description = description,
             started_at = started_at,
-            indicators_html = indicators_html,
-            actions_html = actions_html,
-            video_link = video_link
+            indicators_section = indicators_section,
+            actions_section = actions_section,
+            alert_link = alert_link
         )
     }
 
@@ -100,7 +103,7 @@ impl NotificationTemplates {
         pet_name: &str,
         severity: &str,
         description: &str,
-        video_link: &str,
+        alert_link: &str,
     ) -> String {
         // Truncate description if too long
         let short_desc = if description.len() > 50 {
@@ -110,11 +113,11 @@ impl NotificationTemplates {
         };
 
         format!(
-            "🚨 PetPulse ALERT: {} - {}\nSeverity: {}\nView: {}",
+            "🚨 PetPulse ALERT: {} - {}\nSeverity: {}\nDetails: {}",
             pet_name,
             short_desc,
             severity.to_uppercase(),
-            video_link
+            alert_link
         )
     }
 }
