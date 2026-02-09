@@ -26,6 +26,7 @@ pub struct Model {
     pub user_response: Option<String>,
     pub notification_sent: bool,
     pub notification_channels: Option<Json>,
+    pub resolved_at: Option<DateTime>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
